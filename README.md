@@ -20,4 +20,11 @@ Ce projet est un scraper web automatisé développé en Python, utilisant **Sele
    ```bash
    docker build -t logement-scraper .
 
+### Before running :  
+1. Create a .env file
+2. add this line to it : DISCORD_TOKEN = 'your_discord_token_here'  
+
+## Run :
+   ```bash
+   docker run logement-scraper .
 
