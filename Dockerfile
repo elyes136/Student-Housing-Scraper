@@ -1,22 +1,20 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Install Chromium and Chromedriver only
-RUN apt-get update && apt-get install -y \
-    chromium \
-    chromium-driver \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install dependencies
+RUN apt-get update && apt-get install -y chromium chromium-driver && \
+    pip install --upgrade pip
 
-# Set environment variables so Selenium can find Chromium
+# Set environment variables for Chromium
 ENV CHROME_BIN=/usr/bin/chromium
 ENV PATH="/usr/lib/chromium:/usr/lib/chromium/chromedriver:$PATH"
 
 # Set working directory
 WORKDIR /app
 
-# Copy code and install Python dependencies
-COPY Logement_headless_edits.py .
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy your project files
+COPY . .
 
-# Run the script
+# Install Python requirements
+RUN pip install -r requirements.txt
+
 CMD ["python", "Logement_headless_edits.py"]
