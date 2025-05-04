@@ -40,13 +40,24 @@ options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--disable-blink-features=AutomationControlled")
 
-# 🔹 Discord Bot Configuration
-DISCORD_TOKEN =  os.getenv("DISCORD_TOKEN")  # Replace with your bot token
-CHANNEL_ID = 1333027105591660564  # Replace with your Discord channel ID
+# 🔹 Whatsapp Configuration
+import pywhatkit as kit
+import datetime
 
+numbers = {'jamil':'+33646603981'}
 # Initialize Discord bot
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
+
+#Declaration de la classe house
+class house :
+    def __init__(self,name,addresse,surface,price):
+        self.name = name
+        self.address = addresse
+        self.surface = surface
+        self.price = price
+    def __repr__(self):
+        return(f'House: {self.name} {self.address} {self.surface} {self.price}')
 def search_city(city):
     """Search for houses in the specified city and return results."""
     driver = webdriver.Chrome(options=options)
@@ -101,40 +112,38 @@ def search_city(city):
             print(Fore.GREEN + f"✅ Found {len(listings_elements)} house listings!" + Style.RESET_ALL)
 
             # Extract and print house details
-            for house in listings_elements:
+            maison_disponible = []
+            for item in listings_elements:
                 try:
                     # Extract house name
-                    house_name = house.find_element(By.CSS_SELECTOR, HOUSE_NAME_SELECTOR).text.strip()
+                    house_name = item.find_element(By.CSS_SELECTOR, HOUSE_NAME_SELECTOR).text.strip()
                     # Extract house address
-                    house_address = house.find_element(By.CSS_SELECTOR, HOUSE_ADDRESS_SELECTOR).text.strip()
+                    house_address = item.find_element(By.CSS_SELECTOR, HOUSE_ADDRESS_SELECTOR).text.strip()
                     # Extract house surface
-                    surface = house.find_element(By.XPATH, HOUSE_SURFACE_SELECTOR).text.strip()
+                    surface = item.find_element(By.XPATH, HOUSE_SURFACE_SELECTOR).text.strip()
                     surface_match = re.search(r"(\d+,\d+) m²", surface)
                     if surface_match:
                         surface_formatted = surface_match.group(1).replace(",", ".")  # Format surface
                     else:
                         surface_formatted = "N/A"  # Handle missing or unexpected surface format
                     # Extract house price
-                    price = house.find_element(By.XPATH, HOUSE_PRICE_SELECTOR).text.strip()
+                    price = item.find_element(By.XPATH, HOUSE_PRICE_SELECTOR).text.strip()
                     price_match = re.search(r"(\d+,\d+) €", price)
                     if price_match:
                         price_formatted = price_match.group(1).replace(",", ".")  # Format price
                     else:
                         price_formatted = "N/A"  # Handle missing or unexpected price format
                     
-                    # Print house details
-                    print(Fore.GREEN + f"🏠 House Name: {house_name}" + Style.RESET_ALL)
-                    print(Fore.BLUE + f"📍 Address: {house_address}" + Style.RESET_ALL)
-                    print(Fore.CYAN + f"📐 Surface: {surface_formatted} m² (Raw: {surface})" + Style.RESET_ALL)
-                    print(Fore.MAGENTA + f"💰 Price: {price_formatted} € (Raw: {price})" + Style.RESET_ALL)
-                    print("-" * 50)
+                    # create house with the details
+                    maison = house(house_name,house_address,surface,price)
+                    maison_disponible.append(maison)
                 except NoSuchElementException:
                     print(Fore.RED + "❌ Could not extract house details." + Style.RESET_ALL)
                     continue
 
             # Send Discord notification if houses are found
-            if listings_elements:
-                return True
+            if maison_disponible:
+                return maison_disponible
 
             return listings_elements
         except TimeoutException:
@@ -150,22 +159,26 @@ def search_city(city):
         # Close the browser after each iteration
         driver.quit()
 
+def prepare_message (maisons : list) -> str:
+    message = ""
+    for house in maisons:
+        message += f"{house.name} {house.address} {house.surface} {house.price} \n"
+    return message
 # Main loop to retry every 10 minutes
-# Discord bot event
-@client.event
-async def on_ready():
-    print(f'Logged in as {client.user}')
-    channel = client.get_channel(CHANNEL_ID)
-
+async def main() -> None:
     while True:
-        if search_city(CITY_NAME):  # Check if the condition is met
-            print("Fama dyar weee") 
-            await channel.send(f'@here 🏠 Fama dyar weeeeeeeeee ejri f {CITY_NAME}')
-            #await asyncio.sleep(150)
+
+        maison_disponible = search_city(CITY_NAME)
+
+        if maison_disponible:  # Check if the condition is met
+
+            print("Fama dyar weee")
+            message = prepare_message(maison_disponible)
+            kit.sendwhatmsg_instantly(numbers['jamil'], message, wait_time=15, tab_close=True)            #await asyncio.sleep(150)
             #break  # Stop after sending the message (or remove this to keep monitoring)
         else:
-            print(Fore.BLUE+"Condition not met. Checking again in 10 minutes ...")
+            print(Fore.BLUE+"Condition not met. Checking again in 5 minutes ...")
         await asyncio.sleep(300)  # Wait 5 minutes before checking again
         #channel = client.get_channel(CHANNEL_ID)
-# Run the bot
-client.run(DISCORD_TOKEN)
+if __name__ == '__main__':
+    asyncio.run(main())
