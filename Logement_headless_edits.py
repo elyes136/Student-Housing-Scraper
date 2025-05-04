@@ -160,7 +160,7 @@ def search_city(city):
         driver.quit()
 
 def prepare_message (maisons : list) -> str:
-    message = ""
+    message = " \n \n :فما ديار يا جميل اجري"
     for house in maisons:
         message += f"{house.name} {house.address} {house.surface} {house.price} \n"
     return message
