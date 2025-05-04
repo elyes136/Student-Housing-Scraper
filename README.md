@@ -26,5 +26,5 @@ Ce projet est un scraper web automatisé développé en Python, utilisant **Sele
 
 ## Run :
    ```bash
-   docker run logement-scraper .
+   docker run -it logement-scraper .
 
