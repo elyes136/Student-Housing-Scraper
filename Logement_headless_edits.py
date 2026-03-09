@@ -34,6 +34,7 @@ HOUSE_NAME_SELECTOR = "a[href^='/tools']"  # House name
 HOUSE_ADDRESS_SELECTOR = "p.fr-card__desc"  # House address
 HOUSE_SURFACE_SELECTOR = ".//p[contains(@class, 'fr-card__detail')]"  # House surface (relative XPath)
 HOUSE_PRICE_SELECTOR = ".//p[contains(@class, 'fr-badge')]"  # House price (relative XPath)
+HOUSE_IMAGE_SELECTOR = "img.fr-responsive-img"  # House image
 
 # 🔹 Set up ChromeOptions for headless mode (anti-detection)
 options = webdriver.ChromeOptions()
@@ -181,12 +182,19 @@ def search_city(city):
                     print(Fore.MAGENTA + f"💰 Price: {price_formatted} € (Raw: {price})" + Style.RESET_ALL)
                     print("-" * 50)
 
+                    # Extract house image
+                    try:
+                        house_image = house.find_element(By.CSS_SELECTOR, HOUSE_IMAGE_SELECTOR).get_attribute("src")
+                    except NoSuchElementException:
+                        house_image = None
+
                     houses.append({
                         "name": house_name,
                         "address": house_address,
                         "surface": surface_formatted,
                         "price": price_formatted,
                         "link": house_href if house_href else URL,
+                        "image": house_image,
                     })
                 except NoSuchElementException:
                     print(Fore.RED + "❌ Could not extract house details." + Style.RESET_ALL)
@@ -233,6 +241,8 @@ async def on_ready():
                 embed.add_field(name="📍 Adresse", value=house["address"], inline=False)
                 embed.add_field(name="💰 Loyer", value=f"{house['price']} €/mois", inline=True)
                 embed.add_field(name="📐 Surface", value=f"{house['surface']} m²", inline=True)
+                if house.get("image"):
+                    embed.set_image(url=house["image"])
                 embed.set_footer(text="CROUS Housing Scraper • Trouvé maintenant")
 
                 # Create a button that links to the listing
