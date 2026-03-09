@@ -12,6 +12,7 @@ from discord import ui  # For Discord UI components
 import asyncio  # For async operations
 from datetime import datetime  # For timestamps
 import os
+import random  # For random delays and user agent rotation
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -34,14 +35,31 @@ HOUSE_ADDRESS_SELECTOR = "p.fr-card__desc"  # House address
 HOUSE_SURFACE_SELECTOR = ".//p[contains(@class, 'fr-card__detail')]"  # House surface (relative XPath)
 HOUSE_PRICE_SELECTOR = ".//p[contains(@class, 'fr-badge')]"  # House price (relative XPath)
 
-# 🔹 Set up ChromeOptions for headless mode
+# 🔹 Set up ChromeOptions for headless mode (anti-detection)
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")
+options.add_argument("--headless=new")  # New headless mode (less detectable)
 options.add_argument("--disable-gpu")
 options.add_argument("--window-size=1920,1080")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--disable-blink-features=AutomationControlled")
+
+# 🔹 Anti-detection options
+options.add_argument("--disable-extensions")
+options.add_argument("--disable-infobars")
+options.add_argument("--disable-popup-blocking")
+options.add_argument("--lang=fr-FR")
+options.add_experimental_option("excludeSwitches", ["enable-automation"])
+options.add_experimental_option("useAutomationExtension", False)
+
+# 🔹 Rotate user agents to look like a real browser
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+]
 
 # 🔹 Auto-detect Chromium binary (for VPS/Raspberry Pi compatibility)
 import shutil
@@ -61,18 +79,36 @@ def search_city(city):
     # Auto-detect chromedriver path
     chromedriver_path = shutil.which("chromedriver")
     service = Service(chromedriver_path) if chromedriver_path else Service()
+
+    # Set a random user agent for each session
+    options.add_argument(f"--user-agent={random.choice(USER_AGENTS)}")
     driver = webdriver.Chrome(service=service, options=options)
+
+    # 🔹 Inject stealth scripts to hide automation fingerprints
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": """
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'en-US', 'en'] });
+            window.chrome = { runtime: {} };
+        """
+    })
+
     try:
         print(Fore.YELLOW + "🌐 Opening the website..." + Style.RESET_ALL)
         driver.get(URL)
+        time.sleep(random.uniform(1, 3))  # Random delay to mimic human behavior
         
         # Wait for search box and type city name
         search_box = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, SEARCH_BOX_SELECTOR))
         )
         search_box.clear()
-        search_box.send_keys(city)
-        time.sleep(2)  # Allow dropdown to appear
+        # Type city name character by character (human-like)
+        for char in city:
+            search_box.send_keys(char)
+            time.sleep(random.uniform(0.05, 0.15))
+        time.sleep(random.uniform(2, 4))  # Allow dropdown to appear
 
         # Select city from dropdown
         dropdown_options = WebDriverWait(driver, 20).until(
@@ -82,12 +118,13 @@ def search_city(city):
             if city.lower() in option.text.lower():
                 option.click()
                 break
-        time.sleep(2)
+        time.sleep(random.uniform(1, 3))
 
         # Click search button
         search_button = WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, SEARCH_BUTTON_SELECTOR))
         )
+        time.sleep(random.uniform(0.5, 1.5))  # Small pause before clicking
         search_button.click()
 
         # Wait for search results to load
@@ -170,6 +207,7 @@ def search_city(city):
         driver.quit()
 
 # Main loop to retry every 10 minutes
+
 # Discord bot event
 @client.event
 async def on_ready():
@@ -178,8 +216,9 @@ async def on_ready():
 
     while True:
         houses = search_city(CITY_NAME)
-        if houses:  # Check if any houses were found
-            print("Fama dyar weee")
+        if houses:
+            print(f"� Found {len(houses)} house(s)!")
+
             # Send a summary notification
             await channel.send(f'@here 🏠 **{len(houses)} logement(s) trouvé(s) à {CITY_NAME} !**')
 
@@ -207,9 +246,12 @@ async def on_ready():
                 )
 
                 await channel.send(embed=embed, view=view)
-
         else:
-            print(Fore.BLUE + "Condition not met. Checking again in 5 minutes ..." + Style.RESET_ALL)
-        await asyncio.sleep(300)  # Wait 5 minutes before checking again
+            print(Fore.BLUE + "No houses found. Checking again in 5 minutes ..." + Style.RESET_ALL)
+
+        # Random wait between 4-6 minutes (less predictable)
+        wait_time = random.randint(240, 360)
+        print(f"⏳ Next check in {wait_time // 60} min {wait_time % 60} sec...")
+        await asyncio.sleep(wait_time)
 # Run the bot
 client.run(DISCORD_TOKEN)
