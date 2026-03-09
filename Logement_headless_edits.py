@@ -3,11 +3,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.chrome.service import Service
 import time
 from colorama import Fore, Style
 import re  # For regex matching
 import discord  # For Discord bot
+from discord import ui  # For Discord UI components
 import asyncio  # For async operations
+from datetime import datetime  # For timestamps
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -15,8 +18,8 @@ load_dotenv()
 # 🔹 Website URL
 URL = "https://trouverunlogement.lescrous.fr/"
 
-# 🔹 Prompt for user input
-CITY_NAME = input("Enter the city you want to search for: ")
+# 🔹 City name from environment variable or user input
+CITY_NAME = os.getenv("CITY_NAME") or input("Enter the city you want to search for: ")
 
 # 🔹 Correct locators
 SEARCH_BOX_SELECTOR = "input[class*='PlaceAutocomplete__input']"  # Search box
@@ -40,6 +43,12 @@ options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--disable-blink-features=AutomationControlled")
 
+# 🔹 Auto-detect Chromium binary (for VPS/Raspberry Pi compatibility)
+import shutil
+chromium_path = shutil.which("chromium-browser") or shutil.which("chromium")
+if chromium_path:
+    options.binary_location = chromium_path
+
 # 🔹 Discord Bot Configuration
 DISCORD_TOKEN =  os.getenv("DISCORD_TOKEN")  # Replace with your bot token
 CHANNEL_ID = 1333027105591660564  # Replace with your Discord channel ID
@@ -49,7 +58,10 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 def search_city(city):
     """Search for houses in the specified city and return results."""
-    driver = webdriver.Chrome(options=options)
+    # Auto-detect chromedriver path
+    chromedriver_path = shutil.which("chromedriver")
+    service = Service(chromedriver_path) if chromedriver_path else Service()
+    driver = webdriver.Chrome(service=service, options=options)
     try:
         print(Fore.YELLOW + "🌐 Opening the website..." + Style.RESET_ALL)
         driver.get(URL)
@@ -89,7 +101,7 @@ def search_city(city):
             # Check if no houses were found
             if title_text == "Aucun logement trouvé":
                 print(Fore.RED + f"🏠 I found 0 houses." + Style.RESET_ALL)
-                return set()  # No listings found
+                return []  # No listings found
 
             print(Fore.GREEN + "✅ Search results loaded!" + Style.RESET_ALL)
 
@@ -100,11 +112,14 @@ def search_city(city):
             )
             print(Fore.GREEN + f"✅ Found {len(listings_elements)} house listings!" + Style.RESET_ALL)
 
-            # Extract and print house details
+            # Extract and collect house details
+            houses = []
             for house in listings_elements:
                 try:
-                    # Extract house name
-                    house_name = house.find_element(By.CSS_SELECTOR, HOUSE_NAME_SELECTOR).text.strip()
+                    # Extract house name and link
+                    house_link_element = house.find_element(By.CSS_SELECTOR, HOUSE_NAME_SELECTOR)
+                    house_name = house_link_element.text.strip()
+                    house_href = house_link_element.get_attribute("href")
                     # Extract house address
                     house_address = house.find_element(By.CSS_SELECTOR, HOUSE_ADDRESS_SELECTOR).text.strip()
                     # Extract house surface
@@ -128,24 +143,28 @@ def search_city(city):
                     print(Fore.CYAN + f"📐 Surface: {surface_formatted} m² (Raw: {surface})" + Style.RESET_ALL)
                     print(Fore.MAGENTA + f"💰 Price: {price_formatted} € (Raw: {price})" + Style.RESET_ALL)
                     print("-" * 50)
+
+                    houses.append({
+                        "name": house_name,
+                        "address": house_address,
+                        "surface": surface_formatted,
+                        "price": price_formatted,
+                        "link": house_href if house_href else URL,
+                    })
                 except NoSuchElementException:
                     print(Fore.RED + "❌ Could not extract house details." + Style.RESET_ALL)
                     continue
 
-            # Send Discord notification if houses are found
-            if listings_elements:
-                return True
-
-            return listings_elements
+            return houses
         except TimeoutException:
             print(Fore.RED + "❌ House listings did not load within the expected time." + Style.RESET_ALL)
             print(Fore.RED + f"🏠 I found 0 houses." + Style.RESET_ALL)
-            return set()  # No listings found
+            return []  # No listings found
 
     except (NoSuchElementException, TimeoutException) as e:
         print(Fore.RED + f"❌ An error occurred: {e}" + Style.RESET_ALL)
         print(Fore.RED + f"🏠 I found 0 houses." + Style.RESET_ALL)
-        return set()
+        return []
     finally:
         # Close the browser after each iteration
         driver.quit()
@@ -158,14 +177,39 @@ async def on_ready():
     channel = client.get_channel(CHANNEL_ID)
 
     while True:
-        if search_city(CITY_NAME):  # Check if the condition is met
-            print("Fama dyar weee") 
-            await channel.send(f'@here 🏠 Fama dyar weeeeeeeeee ejri f {CITY_NAME}')
-            #await asyncio.sleep(150)
-            #break  # Stop after sending the message (or remove this to keep monitoring)
+        houses = search_city(CITY_NAME)
+        if houses:  # Check if any houses were found
+            print("Fama dyar weee")
+            # Send a summary notification
+            await channel.send(f'@here 🏠 **{len(houses)} logement(s) trouvé(s) à {CITY_NAME} !**')
+
+            # Send a beautiful embed for each house
+            for house in houses:
+                embed = discord.Embed(
+                    title=f"🏠 {house['name']}",
+                    description=f"Un logement est disponible à **{CITY_NAME}** !",
+                    color=discord.Color.green(),
+                    timestamp=datetime.now(),
+                )
+                embed.add_field(name="📍 Adresse", value=house["address"], inline=False)
+                embed.add_field(name="💰 Loyer", value=f"{house['price']} €/mois", inline=True)
+                embed.add_field(name="📐 Surface", value=f"{house['surface']} m²", inline=True)
+                embed.set_footer(text="CROUS Housing Scraper • Trouvé maintenant")
+
+                # Create a button that links to the listing
+                view = discord.ui.View()
+                view.add_item(
+                    discord.ui.Button(
+                        label="🔗 Voir sur le site",
+                        style=discord.ButtonStyle.link,
+                        url=house["link"],
+                    )
+                )
+
+                await channel.send(embed=embed, view=view)
+
         else:
-            print(Fore.BLUE+"Condition not met. Checking again in 10 minutes ...")
+            print(Fore.BLUE + "Condition not met. Checking again in 5 minutes ..." + Style.RESET_ALL)
         await asyncio.sleep(300)  # Wait 5 minutes before checking again
-        #channel = client.get_channel(CHANNEL_ID)
 # Run the bot
 client.run(DISCORD_TOKEN)
